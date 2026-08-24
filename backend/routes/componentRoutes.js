@@ -1,109 +1,180 @@
 const express = require("express");
-
+const pool = require("../db");
 const router = express.Router();
-
-// Temporary in-memory component data
-const components = [
-    {
-        id: 1,
-        name: "Arduino Uno",
-        category: "Microcontroller",
-        quantity: 3
-    },
-    {
-        id: 2,
-        name: "MPU6050",
-        category: "Sensor",
-        quantity: 5
-    }
-];
 
 // GET /api/components
 // Get all components
-router.get("/", (req, res) => {
-    res.json(components);
+router.get("/", async (req, res) => {
+    try {
+        const result = await pool.query(
+            "SELECT * FROM components ORDER BY id"
+        );
+
+        res.json(result.rows);
+    } catch (error) {
+        console.error("Error fetching components:", error.message);
+
+        res.status(500).json({
+            message: "Internal server error"
+        });
+    }
 });
 
 // GET /api/components/:id
 // Get a single component
-router.get("/:id", (req, res) => {
+router.get("/:id", async (req, res) => {
     const componentId = Number(req.params.id);
 
-    const component = components.find(
-        (component) => component.id === componentId
-    );
+    if (!Number.isInteger(componentId) || componentId <= 0) {
+    return res.status(400).json({
+        message: "Invalid component ID"
+    });
+}
+    try {
+        const result = await pool.query(
+            "SELECT * FROM components WHERE id = $1",
+            [componentId]
+        );
 
-    if (!component) {
-        return res.status(404).json({
-            message: "Component not found"
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                message: "Component not found"
+            });
+        }
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error("Error fetching component:", error.message);
+
+        res.status(500).json({
+            message: "Internal server error"
         });
     }
-
-    res.json(component);
 });
 
 // POST /api/components
 // Create a new component
-router.post("/", (req, res) => {
-    const { name, category, quantity } = req.body;
-
-    const newComponent = {
-        id: components.length + 1,
+router.post("/", async (req, res) => {
+    const {
         name,
+        description,
         category,
-        quantity
-    };
+        quantity,
+        condition,
+        owner_id
+    } = req.body;
 
-    components.push(newComponent);
+    try {
+        const result = await pool.query(
+            `INSERT INTO components
+            (name, description, category, quantity, condition, owner_id)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING *`,
+            [name, description, category, quantity, condition, owner_id]
+        );
 
-    res.status(201).json(newComponent);
+        res.status(201).json(result.rows[0]);
+    } catch (error) {
+        console.error("Error creating component:", error.message);
+
+        res.status(500).json({
+            message: "Internal server error"
+        });
+    }
 });
 
 // PUT /api/components/:id
 // Update an existing component
-router.put("/:id", (req, res) => {
+router.put("/:id", async (req, res) => {
     const componentId = Number(req.params.id);
 
-    const component = components.find(
-        (component) => component.id === componentId
-    );
-
-    if (!component) {
-        return res.status(404).json({
-            message: "Component not found"
+    if (!Number.isInteger(componentId) || componentId <= 0) {
+        return res.status(400).json({
+            message: "Invalid component ID"
         });
     }
 
-    const { name, category, quantity } = req.body;
+    const {
+        name,
+        description,
+        category,
+        quantity,
+        condition
+    } = req.body;
 
-    component.name = name;
-    component.category = category;
-    component.quantity = quantity;
+    try {
+        const result = await pool.query(
+            `UPDATE components
+             SET
+                 name = $1,
+                 description = $2,
+                 category = $3,
+                 quantity = $4,
+                 condition = $5
+             WHERE id = $6
+             RETURNING *`,
+            [
+                name,
+                description,
+                category,
+                quantity,
+                condition,
+                componentId
+            ]
+        );
 
-    res.json(component);
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                message: "Component not found"
+            });
+        }
+
+        res.json(result.rows[0]);
+    } catch (error) {
+        console.error("Error updating component:", error.message);
+
+        res.status(500).json({
+            message: "Internal server error"
+        });
+    }
 });
 
 // DELETE /api/components/:id
 // Delete a component
-router.delete("/:id", (req, res) => {
+router.delete("/:id", async (req, res) => {
     const componentId = Number(req.params.id);
 
-    const componentIndex = components.findIndex(
-        (component) => component.id === componentId
-    );
-
-    if (componentIndex === -1) {
-        return res.status(404).json({
-            message: "Component not found"
+    if (!Number.isInteger(componentId) || componentId <= 0) {
+        return res.status(400).json({
+            message: "Invalid component ID"
         });
     }
 
-    const deletedComponent = components.splice(componentIndex, 1);
+    try {
+        const result = await pool.query(
+            `DELETE FROM components
+             WHERE id = $1
+             RETURNING *`,
+            [componentId]
+        );
 
-    res.json({
-        message: "Component deleted successfully",
-        component: deletedComponent[0]
-    });
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                message: "Component not found"
+            });
+        }
+
+        res.json({
+            message: "Component deleted successfully",
+            component: result.rows[0]
+        });
+    } catch (error) {
+        console.error("Error deleting component:", error.message);
+
+        res.status(500).json({
+            message: "Internal server error"
+        });
+    }
 });
 
 module.exports = router;
